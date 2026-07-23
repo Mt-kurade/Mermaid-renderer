@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Write Mermaid diagrams, preview them instantly, and export polished PNGs.">
+  <title>Mermaid Render — Mermaid to PNG</title>
+  <link rel="icon" href="./public/favicon.svg">
+  <link rel="stylesheet" href="./app/globals.css">
+  <style>
+    .brand-mark,.panel-head i,.zoom button,.reset,.export{line-height:1}
+    .brand-mark{font-size:18px}.panel-head i{font-size:16px}
+    .reset,.zoom button,.export{font-family:Arial,Helvetica,sans-serif}
+    .status>span{font-weight:700}.select::after{content:"⌄";position:absolute;right:9px;top:5px;color:#8991a0;pointer-events:none}
+    .select svg{display:none}.diagram{width:100%;display:grid;place-items:center}
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Mermaid Render home">
+        <span class="brand-mark" aria-hidden="true">✦</span><span>Mermaid <b>Render</b></span>
+      </a>
+      <div class="header-actions">
+        <span class="saved"><span aria-hidden="true">✓</span> Saved locally</span>
+        <a href="https://mermaid.js.org/intro/" target="_blank" rel="noreferrer">View Mermaid docs</a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow"><span></span> Mermaid to PNG, instantly</p>
+      <h1>Turn diagrams into<br><em>polished PNGs.</em></h1>
+      <p>Write Mermaid on the left. See it come alive on the right.<br> Export when it’s exactly right.</p>
+    </section>
+
+    <section class="workspace">
+      <div class="panel editor">
+        <div class="panel-head">
+          <div><i class="lavender" aria-hidden="true">&lt;/&gt;</i><div><h2>Mermaid code</h2><p>Edits render automatically</p></div></div>
+          <button class="reset" id="reset" type="button">↻ Reset</button>
+        </div>
+        <div class="code-wrap">
+          <div class="lines" id="lines" aria-hidden="true"></div>
+          <textarea id="source" spellcheck="false" aria-label="Mermaid diagram source"></textarea>
+        </div>
+        <div class="status ok" id="status"><span>✓</span><p>Diagram rendered successfully</p></div>
+      </div>
+
+      <div class="panel preview">
+        <div class="panel-head">
+          <div><i class="mint" aria-hidden="true">▧</i><div><h2>Preview</h2><p>Light background · PNG ready</p></div></div>
+          <div class="zoom">
+            <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+            <span id="zoom-label">100%</span>
+            <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="zoom-reset" type="button" aria-label="Reset zoom">⛶</button>
+          </div>
+        </div>
+        <div class="canvas">
+          <div class="diagram" id="diagram"></div>
+          <p id="empty" hidden>Fix the syntax to preview your diagram.</p>
+        </div>
+        <div class="export-bar">
+          <label><span>Export quality</span><div class="select">
+            <select id="quality"><option value="1">1× Standard</option><option value="2" selected>2× High</option><option value="3">3× Ultra</option></select>
+          </div></label>
+          <button class="export" id="export" type="button">↓ Export PNG</button>
+        </div>
+      </div>
+    </section>
+    <footer><span>Built for clear thinking.</span><span>Nothing leaves your browser.</span></footer>
+  </main>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs";
+
+    const starter = `flowchart LR
+  A[Write Mermaid] --> B{Looks good?}
+  B -->|Yes| C[Export PNG]
+  B -->|Not yet| D[Keep editing]
+  D --> A
+
+  style A fill:#eef2ff,stroke:#6366f1
+  style C fill:#ecfdf5,stroke:#10b981`;
+    const source = document.querySelector("#source");
+    const lines = document.querySelector("#lines");
+    const diagram = document.querySelector("#diagram");
+    const status = document.querySelector("#status");
+    const empty = document.querySelector("#empty");
+    const exportButton = document.querySelector("#export");
+    let zoom = 100, renderId = 0, renderTimer;
+
+    mermaid.initialize({
+      startOnLoad: false, theme: "base", securityLevel: "strict",
+      themeVariables: {
+        background: "#ffffff", primaryColor: "#eef2ff", primaryTextColor: "#1f2937",
+        primaryBorderColor: "#6366f1", lineColor: "#64748b", secondaryColor: "#ecfdf5",
+        tertiaryColor: "#f8fafc", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+      }
+    });
+
+    function updateLines() {
+      lines.replaceChildren(...source.value.split("\n").map((_, i) => {
+        const span = document.createElement("span"); span.textContent = i + 1; return span;
+      }));
+    }
+    async function render() {
+      try {
+        const result = await mermaid.render(`mermaid-${++renderId}`, source.value);
+        diagram.innerHTML = result.svg;
+        status.className = "status ok"; status.firstElementChild.textContent = "✓";
+        status.lastElementChild.textContent = "Diagram rendered successfully";
+        empty.hidden = true; exportButton.disabled = false;
+      } catch (error) {
+        status.className = "status error"; status.firstElementChild.textContent = "!";
+        status.lastElementChild.textContent = (error?.message || "Invalid Mermaid syntax").split("\n")[0];
+        empty.hidden = diagram.innerHTML !== ""; exportButton.disabled = diagram.innerHTML === "";
+      }
+    }
+    function queueRender() {
+      updateLines(); clearTimeout(renderTimer); renderTimer = setTimeout(render, 350);
+    }
+    function setZoom(value) {
+      zoom = Math.max(50, Math.min(180, value));
+      diagram.style.transform = `scale(${zoom / 100})`;
+      document.querySelector("#zoom-label").textContent = `${zoom}%`;
+    }
+    function exportPng() {
+      const original = diagram.querySelector("svg"); if (!original) return;
+      const node = original.cloneNode(true);
+      const view = (node.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+      const width = view[2] || Number(node.getAttribute("width")) || 800;
+      const height = view[3] || Number(node.getAttribute("height")) || 600;
+      node.setAttribute("width", width); node.setAttribute("height", height);
+      const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(node)], {type:"image/svg+xml;charset=utf-8"}));
+      const image = new Image();
+      image.onload = () => {
+        const scale = Number(document.querySelector("#quality").value);
+        const canvas = document.createElement("canvas"); canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
+        const context = canvas.getContext("2d"); context.scale(scale, scale); context.fillStyle = "#fff"; context.fillRect(0, 0, width, height); context.drawImage(image, 0, 0, width, height);
+        canvas.toBlob(png => {
+          const link = document.createElement("a"); link.href = URL.createObjectURL(png); link.download = "mermaid-diagram.png"; link.click(); URL.revokeObjectURL(link.href);
+        }, "image/png"); URL.revokeObjectURL(url);
+      };
+      image.src = url;
+    }
+
+    source.value = localStorage.getItem("mermaid-source") || starter;
+    source.addEventListener("input", () => { localStorage.setItem("mermaid-source", source.value); queueRender(); });
+    document.querySelector("#reset").addEventListener("click", () => { source.value = starter; localStorage.setItem("mermaid-source", starter); queueRender(); });
+    document.querySelector("#zoom-out").addEventListener("click", () => setZoom(zoom - 10));
+    document.querySelector("#zoom-in").addEventListener("click", () => setZoom(zoom + 10));
+    document.querySelector("#zoom-reset").addEventListener("click", () => setZoom(100));
+    exportButton.addEventListener("click", exportPng);
+    updateLines(); render();
+  </script>
+</body>
+</html>
